@@ -1,31 +1,65 @@
 import http from 'node:http';
 import fs from 'node:fs/promises';
+import { sendData, sendError } from './modules/send.js';
+import { checkFile } from './modules/checkFile.js';
+import { handleComediansRequest } from './modules/handleComediansRequest.js';
+import { handleAddClient } from './modules/handleAddClient.js';
+import { handleClientsRequest } from './modules/handleClientsRequest.js';
+import { handleUpdateClient } from './modules/handleUpdateClient.js';
 
 const PORT = 8080;
+const COMEDIANS = './comedians.json';
+export const CLIENTS = './clients.json';
 
-http
-  .createServer(async (req, res) => {
-    const data = await fs.readFile('comedians.json', 'utf-8');
-    if (req.method === 'GET' && req.url === '/comedians') {
+const startServer = async () => {
+  if (!(await checkFile(COMEDIANS))) {
+    return;
+  }
+
+  await checkFile(CLIENTS, true);
+
+  const comediansData = await fs.readFile(COMEDIANS, 'utf-8');
+  const comedians = JSON.parse(comediansData);
+
+  http
+    .createServer(async (req, res) => {
       try {
-        res.writeHead(200, {
-          'Content-Type': 'text/json; charset=utf-8',
-          'Access-Control-Allow-Origin': '*',
-        });
-        res.end(data);
-      } catch (error) {
-        res.writeHead(500, {
-          'Content-Type': 'text/plain; charset=utf-8',
-        });
-        res.end(`Ошибка сервера: ${error}`);
-      }
-    } else {
-      res.writeHead(404, {
-        'Content-Type': 'text/plain; charset=utf-8',
-      });
-      res.end('Not found');
-    }
-  })
-  .listen(PORT);
+        res.setHeader('Access-Control-Allow-Origin', '*');
 
-console.log(`Сервер запущен на http://localhost:${PORT}`);
+        const segments = req.url.split('/').filter(Boolean);
+
+        if (req.method === 'GET' && segments[0] === 'comedians') {
+          handleComediansRequest(req, res, comedians, segments);
+          return;
+        }
+
+        if (req.method === 'POST' && segments[0] === 'clients') {
+          handleAddClient(req, res);
+          return;
+        }
+
+        if (req.method === 'GET' && segments[0] === 'clients' && segments.length === 2) {
+          const ticketNumber = segments[1];
+          handleClientsRequest(req, res, ticketNumber);
+          return;
+          //GET /clients/:ticket
+          //получение клиента по номеру билета
+        }
+
+        if (req.method === 'PATCH' && segments[0] === 'clients' && segments.length === 2) {
+          handleUpdateClient(req, res, segments);
+          return;
+          //PATCH /clients/:ticket
+          //обновление клиента по номеру билета
+        }
+        sendError(res, 404, 'Not found');
+      } catch (error) {
+        sendError(res, 500, `Ошибка сервера: ${error}`);
+      }
+    })
+    .listen(PORT);
+
+  console.log(`Сервер запущен на http://localhost:${PORT}`);
+};
+
+startServer();
